@@ -112,6 +112,32 @@ export class MarkedPlugin extends ContextAwareRendererComponent {
     }
 
     /**
+     * Takes a string and recursively completes all the include statements. Nested
+     * includes are handled by the recursion.
+     *
+     * @param text Markdown string containing possible [[include:file]] text.
+     * @return String with included text replaced
+     */
+    private loadIncludesRecursively(text: string): string {
+        return text.replace(this.includePattern, (match: string, path: string) => {
+            path = Path.join(this.includes!, path.trim());
+
+            if (FS.existsSync(path) && FS.statSync(path).isFile()) {
+                const contents = this.loadIncludesRecursively(FS.readFileSync(path, 'utf-8'));
+
+                if (path.substr(-4).toLocaleLowerCase() === '.hbs') {
+                    const template = Handlebars.compile(contents);
+                    return template(context);
+                } else {
+                    return contents;
+                }
+            } else {
+                return '';
+            }
+        });
+    }
+
+    /**
      * Parse the given markdown string and return the resulting html.
      *
      * @param text  The markdown string that should be parsed.
@@ -120,20 +146,7 @@ export class MarkedPlugin extends ContextAwareRendererComponent {
      */
     public parseMarkdown(text: string, context: any) {
         if (this.includes) {
-            text = text.replace(this.includePattern, (match: string, path: string) => {
-                path = Path.join(this.includes!, path.trim());
-                if (FS.existsSync(path) && FS.statSync(path).isFile()) {
-                    const contents = FS.readFileSync(path, 'utf-8');
-                    if (path.substr(-4).toLocaleLowerCase() === '.hbs') {
-                        const template = Handlebars.compile(contents);
-                        return template(context);
-                    } else {
-                        return contents;
-                    }
-                } else {
-                    return '';
-                }
-            });
+            text = this.loadIncludesRecursively(text);
         }
 
         if (this.mediaDirectory) {
